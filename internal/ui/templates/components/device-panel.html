@@ -1,0 +1,17 @@
+{{ define "device-panel" }}
+<section class="panel">
+    <div class="panel-header">
+        <h2>Last Device Payload</h2>
+        <a id="mapActionButton" href="#" target="_blank" rel="noopener noreferrer" class="primary-link hidden">
+            View on Google Maps
+        </a>
+    </div>
+    <div id="deviceData" class="device-grid">
+        <div class="data-item">
+            <span class="data-label">Status</span>
+            <span class="data-value">Waiting for first ping...</span>
+        </div>
+    </div>
+    <div class="chip-row" id="deviceChips"></div>
+</section>
+{{ end }}

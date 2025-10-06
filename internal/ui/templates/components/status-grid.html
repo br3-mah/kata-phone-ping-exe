@@ -1,0 +1,19 @@
+{{ define "status-grid" }}
+<section class="status-grid">
+    <article class="status-card">
+        <div class="status-title">Server Status</div>
+        <div class="status-indicator" id="serverStatusText">
+            <span class="status-dot"></span>
+            <span>Unknown</span>
+        </div>
+    </article>
+    <article class="status-card">
+        <div class="status-title">Last Ping</div>
+        <div class="status-value" id="lastPingText">Never</div>
+    </article>
+    <article class="status-card">
+        <div class="status-title">Total Errors</div>
+        <div class="status-value" id="errorCountText">0</div>
+    </article>
+</section>
+{{ end }}

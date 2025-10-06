@@ -1,0 +1,195 @@
+{{ define "scripts" }}
+<script>
+(function () {
+    const serverStatusEl = document.getElementById('serverStatusText');
+    const lastPingEl = document.getElementById('lastPingText');
+    const errorCountEl = document.getElementById('errorCountText');
+    const pingCountEl = document.getElementById('highlightPingCount');
+    const highlightLastPingEl = document.getElementById('highlightLastPing');
+    const deviceDataEl = document.getElementById('deviceData');
+    const deviceChipsEl = document.getElementById('deviceChips');
+    const errorsListEl = document.getElementById('errorsList');
+    const mapButtonEl = document.getElementById('mapActionButton');
+
+    function escapeHtml(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatDateTime(isoValue) {
+        if (!isoValue) {
+            return null;
+        }
+        const parsed = new Date(isoValue);
+        if (isNaN(parsed.getTime())) {
+            return null;
+        }
+        return {
+            full: parsed.toLocaleString(),
+            time: parsed.toLocaleTimeString()
+        };
+    }
+
+    function renderDeviceInfo(data, geo) {
+        if (!data) {
+            deviceDataEl.innerHTML =
+                '<div class="data-item">' +
+                '<span class="data-label">Status</span>' +
+                '<span class="data-value">Waiting for first ping...</span>' +
+                '</div>';
+            deviceChipsEl.innerHTML = '';
+            mapButtonEl.classList.add('hidden');
+            return;
+        }
+
+        const geoData = geo || {};
+        const locationParts = [];
+        ['place_name', 'city', 'region', 'country'].forEach(function (key) {
+            if (geoData[key]) {
+                locationParts.push(geoData[key]);
+            }
+        });
+        const locationDisplay = locationParts.length ? locationParts.join(', ') : 'Unknown';
+
+        const latNum = data.latitude ? parseFloat(data.latitude) : NaN;
+        const lonNum = data.longitude ? parseFloat(data.longitude) : NaN;
+        const hasCoords = isFinite(latNum) && isFinite(lonNum);
+        const latFormatted = hasCoords ? latNum.toFixed(6) : '';
+        const lonFormatted = hasCoords ? lonNum.toFixed(6) : '';
+        const coordsDisplay = hasCoords ? latFormatted + ', ' + lonFormatted : 'N/A';
+
+        const rows = [];
+        function addRow(label, value) {
+            const fallback = value ? value : '--';
+            rows.push(
+                '<div class="data-item">' +
+                '<span class="data-label">' + escapeHtml(label) + '</span>' +
+                '<span class="data-value">' + escapeHtml(fallback) + '</span>' +
+                '</div>'
+            );
+        }
+
+        addRow('Hostname', data.hostname);
+        addRow('UUID', data.uuid ? data.uuid.slice(0, 8) + '...' : '');
+        addRow('Operating System', data.os);
+        addRow('MAC Address', data.mac);
+        addRow('Public IP', data.public_ip);
+        addRow('Location', locationDisplay);
+        addRow('Coordinates', coordsDisplay);
+        addRow('ISP', geoData.isp);
+        addRow('Organization', geoData.organization);
+        addRow('ASN', geoData.asn);
+        addRow('Timezone', geoData.timezone);
+
+        deviceDataEl.innerHTML = rows.join('');
+
+        const chips = [];
+        if (geoData.ip_type) {
+            chips.push('<div class="chip"><span>IP Type</span>' + escapeHtml(geoData.ip_type) + '</div>');
+        }
+        if (geoData.continent_code) {
+            chips.push('<div class="chip"><span>Continent</span>' + escapeHtml(geoData.continent_code) + '</div>');
+        }
+        if (geoData.country_code) {
+            chips.push('<div class="chip"><span>Country</span>' + escapeHtml(geoData.country_code) + '</div>');
+        }
+        if (geoData.lookup_source) {
+            chips.push('<div class="chip"><span>Source</span>' + escapeHtml(geoData.lookup_source) + '</div>');
+        }
+        if (geoData.lookup_timestamp_utc) {
+            const stamp = formatDateTime(geoData.lookup_timestamp_utc);
+            const readable = stamp ? stamp.full : geoData.lookup_timestamp_utc;
+            chips.push('<div class="chip"><span>Updated</span>' + escapeHtml(readable) + '</div>');
+        }
+        deviceChipsEl.innerHTML = chips.join('');
+
+        let mapUrl = geoData.google_maps_url || '';
+        if (!mapUrl && hasCoords) {
+            mapUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(latFormatted + ',' + lonFormatted);
+        }
+
+        if (mapUrl) {
+            mapButtonEl.href = mapUrl;
+            mapButtonEl.textContent = geoData.place_name ? 'View ' + geoData.place_name : 'View on Google Maps';
+            mapButtonEl.classList.remove('hidden');
+        } else {
+            mapButtonEl.classList.add('hidden');
+        }
+    }
+
+    function renderErrors(errors) {
+        if (!errors || !errors.length) {
+            errorsListEl.innerHTML = '<div class="empty-state">No errors recorded</div>';
+            return;
+        }
+
+        const rendered = errors.map(function (entry) {
+            if (!entry) {
+                return '';
+            }
+            const parts = String(entry).split(': ');
+            if (parts.length > 1 && /^\d{2}:\d{2}:\d{2}$/.test(parts[0])) {
+                const timestamp = parts.shift();
+                const message = parts.join(': ');
+                return (
+                    '<div class="error-item">' +
+                    '<time>' + escapeHtml(timestamp) + '</time>' +
+                    '<div>' + escapeHtml(message) + '</div>' +
+                    '</div>'
+                );
+            }
+            return '<div class="error-item"><div>' + escapeHtml(entry) + '</div></div>';
+        }).join('');
+
+        errorsListEl.innerHTML = rendered;
+    }
+
+    async function loadStatus() {
+        try {
+            const response = await fetch('/api/status', { cache: 'no-cache' });
+            if (!response.ok) {
+                throw new Error('Request failed: ' + response.status);
+            }
+            const status = await response.json();
+
+            const serverStatus = status.server_status || 'Unknown';
+            const statusClass = serverStatus === 'Connected' ? 'status-online' : 'status-offline';
+            serverStatusEl.className = 'status-indicator ' + statusClass;
+            serverStatusEl.innerHTML = '<span class="status-dot"></span><span>' + escapeHtml(serverStatus) + '</span>';
+
+            const pingCount = Number.isInteger(status.ping_count) ? status.ping_count : 0;
+            pingCountEl.textContent = pingCount;
+            errorCountEl.textContent = status.errors ? status.errors.length : 0;
+
+            const lastPing = formatDateTime(status.last_ping);
+            if (lastPing) {
+                lastPingEl.textContent = lastPing.full;
+                highlightLastPingEl.textContent = 'Last ping ' + lastPing.time;
+            } else {
+                lastPingEl.textContent = 'Never';
+                highlightLastPingEl.textContent = 'Awaiting first ping';
+            }
+
+            const geoData = status.last_data && status.last_data.geo ? status.last_data.geo : null;
+            renderDeviceInfo(status.last_data, geoData);
+            renderErrors(status.errors || []);
+        } catch (error) {
+            console.error('Error loading status:', error);
+        }
+    }
+
+    window.loadStatus = loadStatus;
+    document.addEventListener('DOMContentLoaded', function () {
+        loadStatus();
+        setInterval(loadStatus, 10000);
+    });
+})();
+</script>
+{{ end }}
